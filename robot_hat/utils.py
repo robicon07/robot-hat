@@ -116,25 +116,42 @@ def mapping(x, in_min, in_max, out_min, out_max):
     return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 
 
-def get_ip(ifaces=['wlan0', 'eth0']):
+def get_ip(ifaces=None):
     """
-    Get IP address
+    Get IP address of the first active network interface.
+    Falls back to `hostname -I` if needed.
+    """
+    import subprocess
+    import re
 
-    :param ifaces: interfaces to check
-    :type ifaces: list
-    :return: IP address or False if not found
-    :rtype: str/False
-    """
-    if isinstance(ifaces, str):
-        ifaces = [ifaces]
-    for iface in list(ifaces):
-        search_str = 'ip addr show {}'.format(iface)
-        result = os.popen(search_str).read()
-        com = re.compile(r'(?<=inet )(.*)(?=\/)', re.M)
-        ipv4 = re.search(com, result)
-        if ipv4:
-            ipv4 = ipv4.groups()[0]
-            return ipv4
+    # If user didn’t specify, auto-detect available interfaces
+    if ifaces is None:
+        ifaces = []
+        # Get all interface names except 'lo'
+        try:
+            iface_list = os.popen("ls /sys/class/net | grep -v lo").read().split()
+            ifaces.extend(iface_list)
+        except Exception:
+            pass
+
+    # Try each interface for IPv4
+    for iface in ifaces:
+        try:
+            result = os.popen(f"ip addr show {iface}").read()
+            ipv4 = re.search(r'(?<=inet\s)(\d+\.\d+\.\d+\.\d+)', result)
+            if ipv4:
+                return ipv4.group(1)
+        except Exception:
+            continue
+
+    # Fallback to hostname -I
+    try:
+        ip = subprocess.check_output("hostname -I", shell=True).decode().strip().split()[0]
+        if ip:
+            return ip
+    except Exception:
+        pass
+
     return False
 
 
@@ -209,5 +226,6 @@ def disable_speaker():
 
     debug(f"{pincmd} set {__device__.spk_en} op dl")
     run_command(f"{pincmd} set {__device__.spk_en} op dl")
+
 
 
